@@ -56,6 +56,21 @@ public class NutritionCalculator extends JFrame {
         // Menüsor létrehozása
         createMenuBar();
 
+        // Táblázat modell létrehozása
+        String[] columnNames = {"Összetevő", "Mennyiség (g)"};
+        tableModel = new DefaultTableModel(columnNames, 0) {
+            @Override
+            public Class<?> getColumnClass(int column) {
+                if (column == 1) {
+                    return Double.class;
+                }
+                return String.class;
+            }
+        };
+
+        // Táblázat inicializálása
+        ingredientTable = new JTable(tableModel);
+
         // Fül panel létrehozása
         tabbedPane = new JTabbedPane();
 
@@ -74,19 +89,6 @@ public class NutritionCalculator extends JFrame {
         // Fő panelba elemek hozzáadása
         add(tabbedPane, BorderLayout.CENTER);
         add(resultScrollPane, BorderLayout.EAST);
-
-        // Táblázat létrehozása
-        String[] columnNames = {"Összetevő", "Mennyiség (g)"};
-        tableModel = new DefaultTableModel(columnNames, 0) {
-            @Override
-            public Class<?> getColumnClass(int column) {
-                if (column == 1) {
-                    return Double.class;
-                }
-                return String.class;
-            }
-        };
-        ingredientTable = new JTable(tableModel);
 
         // Kezdeti állapot beállítása
         updateRecipeNameDisplay();
@@ -211,6 +213,9 @@ public class NutritionCalculator extends JFrame {
 
                 // Hozzáadjuk a recepthez is
                 currentRecipe.addIngredient(ingredient, weight);
+
+                // Frissítjük a táblázatot
+                tableModel.fireTableDataChanged();
             } catch (NumberFormatException e) {
                 JOptionPane.showMessageDialog(
                         this,
