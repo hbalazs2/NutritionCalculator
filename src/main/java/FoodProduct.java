@@ -1,5 +1,3 @@
-package nutritionCalculator;
-
 /**
  * OpenFoodFacts API-ból beolvasott termék reprezentálása
  */

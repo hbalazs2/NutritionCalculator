@@ -1,5 +1,3 @@
-package nutritionCalculator;
-
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
@@ -12,6 +10,7 @@ import java.util.*;
 import java.util.List;
 
 import org.json.simple.JSONArray;
+//import org.json.JSONObject;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
@@ -81,7 +80,9 @@ public class NutritionCalculator extends JFrame {
         tableModel = new DefaultTableModel(columnNames, 0) {
             @Override
             public Class<?> getColumnClass(int column) {
-                if (column == 1) return Double.class;
+                if (column == 1) {
+                    return Double.class;
+                }
                 return String.class;
             }
         };

@@ -1,5 +1,3 @@
-package nutritionCalculator;
-
 /**
  * Összetevő osztály, amely egy összetevőt reprezentál a receptben
  */
