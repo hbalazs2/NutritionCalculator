@@ -241,6 +241,9 @@ public class NutritionCalculator extends JFrame {
         }
     }
 
+    /**
+     * Recept kalkuláció módosítása sütési korrekciós faktorral
+     */
     private void calculateNutrition() {
         if (tableModel.getRowCount() == 0) {
             JOptionPane.showMessageDialog(
@@ -273,11 +276,66 @@ public class NutritionCalculator extends JFrame {
             }
         }
 
-        // Tápérték számítása
-        NutritionInfo result = calculateTotalNutrition(ingredients, totalWeight);
+        // A sütés előtti tápérték számítása
+        NutritionInfo rawResult = calculateTotalNutrition(ingredients, totalWeight);
 
-        // Eredmény megjelenítése
-        displayResults(result);
+        // Sütés utáni korrekciós tényező meghatározása
+        boolean applyBakingCorrection = false;
+        double bakedWeight = totalWeight;
+
+        // Megkérdezzük a felhasználót a korrekciós faktorról
+        int option = JOptionPane.showConfirmDialog(
+                this,
+                "Szeretnéd alkalmazni a sütési korrekciót a tápértékekre?",
+                "Sütési korrekció",
+                JOptionPane.YES_NO_OPTION);
+
+        if (option == JOptionPane.YES_OPTION) {
+            applyBakingCorrection = true;
+
+            // Bekérjük a sütés utáni súlyt
+            String bakedWeightStr = JOptionPane.showInputDialog(
+                    this,
+                    "Add meg a végtermék súlyát sütés után (gramm):",
+                    "Sütés utáni súly",
+                    JOptionPane.QUESTION_MESSAGE);
+
+            try {
+                bakedWeight = Double.parseDouble(bakedWeightStr);
+
+                if (bakedWeight <= 0 || bakedWeight > totalWeight) {
+                    JOptionPane.showMessageDialog(
+                            this,
+                            "Érvénytelen súly! A sütés utáni súly nem lehet nagyobb, mint a sütés előtti.",
+                            "Hiba",
+                            JOptionPane.ERROR_MESSAGE);
+                    bakedWeight = totalWeight;
+                    applyBakingCorrection = false;
+                }
+            } catch (NumberFormatException e) {
+                JOptionPane.showMessageDialog(
+                        this,
+                        "Érvénytelen szám. A korrekció nem lesz alkalmazva.",
+                        "Hiba",
+                        JOptionPane.ERROR_MESSAGE);
+                applyBakingCorrection = false;
+            }
+        }
+
+        // Tápérték számítása korrekció alkalmazásával vagy anélkül
+        NutritionInfo finalResult;
+
+        if (applyBakingCorrection) {
+            // Korrekciós faktor számítása (sütés előtti / sütés utáni súly)
+            double correctionFactor = totalWeight / bakedWeight;
+            finalResult = applyCorrectionFactor(rawResult, correctionFactor);
+
+            // Eredmények megjelenítése külön paneleken
+            displayBothResults(rawResult, finalResult, totalWeight, bakedWeight);
+        } else {
+            // Csak a nyers eredményt jelenítjük meg
+            displayResults(rawResult);
+        }
     }
 
     private NutritionInfo calculateTotalNutrition(List<Ingredient> ingredients, double totalWeight) {
@@ -313,6 +371,231 @@ public class NutritionCalculator extends JFrame {
         return result;
     }
 
+    /**
+     * Korrekciós faktor alkalmazása a tápértékekre
+     */
+    private NutritionInfo applyCorrectionFactor(NutritionInfo original, double factor) {
+        NutritionInfo corrected = new NutritionInfo();
+
+        // Minden tápanyagra alkalmazzuk a korrekciós faktort
+        for (String nutrient : NutritionInfo.getAllNutrients()) {
+            // A víztartalom kivétel lehet, de mivel nem számoljuk külön, így minden értékre alkalmazzuk
+            corrected.setValue(nutrient, original.getValue(nutrient) * factor);
+        }
+
+        return corrected;
+    }
+
+    /**
+     * Mind a sütés előtti, mind a sütés utáni eredmények megjelenítése
+     */
+    private void displayBothResults(NutritionInfo rawResult, NutritionInfo bakedResult,
+                                    double rawWeight, double bakedWeight) {
+        // Töröljük a korábbi eredményeket
+        resultPanel.removeAll();
+
+        // Fő cím
+        JLabel titleLabel = new JLabel("Tápérték összehasonlítás");
+        titleLabel.setFont(new Font("Arial", Font.BOLD, 16));
+        titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        resultPanel.add(titleLabel);
+        resultPanel.add(Box.createVerticalStrut(15));
+
+        // Két panel létrehozása egymás mellett (vagy alatt)
+        JPanel rawPanel = new JPanel();
+        rawPanel.setLayout(new BoxLayout(rawPanel, BoxLayout.Y_AXIS));
+        rawPanel.setBorder(BorderFactory.createTitledBorder("Sütés előtt (100g)"));
+
+        JPanel bakedPanel = new JPanel();
+        bakedPanel.setLayout(new BoxLayout(bakedPanel, BoxLayout.Y_AXIS));
+        bakedPanel.setBorder(BorderFactory.createTitledBorder("Sütés után (100g)"));
+
+        // Információs címkék
+        JLabel rawInfoLabel = new JLabel(String.format("Összsúly: %.0fg", rawWeight));
+        rawInfoLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        rawPanel.add(rawInfoLabel);
+
+        JLabel bakedInfoLabel = new JLabel(String.format("Összsúly: %.0fg", bakedWeight));
+        bakedInfoLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        bakedPanel.add(bakedInfoLabel);
+
+        JLabel weightLossLabel = new JLabel(String.format("Súlyveszteség: %.1f%%",
+                (1 - bakedWeight/rawWeight) * 100));
+        weightLossLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        bakedPanel.add(weightLossLabel);
+
+        rawPanel.add(Box.createVerticalStrut(10));
+        bakedPanel.add(Box.createVerticalStrut(10));
+
+        // Energia értékek
+        addComparisonRow(rawPanel, bakedPanel, "Energia (kJ)",
+                rawResult.getValue("energy"), bakedResult.getValue("energy"));
+        addComparisonRow(rawPanel, bakedPanel, "Energia (kcal)",
+                rawResult.getValue("energyKcal"), bakedResult.getValue("energyKcal"));
+
+        rawPanel.add(Box.createVerticalStrut(5));
+        bakedPanel.add(Box.createVerticalStrut(5));
+
+        // Makrotápanyagok
+        addComparisonRow(rawPanel, bakedPanel, "Zsír (g)",
+                rawResult.getValue("fat"), bakedResult.getValue("fat"));
+        addComparisonRow(rawPanel, bakedPanel, "Szénhidrát (g)",
+                rawResult.getValue("carbs"), bakedResult.getValue("carbs"));
+        addComparisonRow(rawPanel, bakedPanel, "- ebből cukor (g)",
+                rawResult.getValue("sugar"), bakedResult.getValue("sugar"));
+        addComparisonRow(rawPanel, bakedPanel, "Rost (g)",
+                rawResult.getValue("fiber"), bakedResult.getValue("fiber"));
+        addComparisonRow(rawPanel, bakedPanel, "Fehérje (g)",
+                rawResult.getValue("protein"), bakedResult.getValue("protein"));
+        addComparisonRow(rawPanel, bakedPanel, "Só (g)",
+                rawResult.getValue("salt"), bakedResult.getValue("salt"));
+
+        // Panelek hozzáadása a fő panelhez
+        JPanel comparisonPanel = new JPanel(new GridLayout(1, 2, 10, 0));
+        comparisonPanel.add(rawPanel);
+        comparisonPanel.add(bakedPanel);
+
+        resultPanel.add(comparisonPanel);
+
+        // További részletes tápérték adatok (opcionális)
+        JButton showDetailsBtn = new JButton("További részletek megjelenítése");
+        showDetailsBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
+        resultPanel.add(Box.createVerticalStrut(15));
+        resultPanel.add(showDetailsBtn);
+
+        showDetailsBtn.addActionListener(e -> {
+            // Új ablak a részletes tápérték adatokhoz
+            JDialog detailsDialog = new JDialog(this, "Részletes tápérték adatok", true);
+            detailsDialog.setSize(700, 500);
+            detailsDialog.setLayout(new BorderLayout());
+
+            JTabbedPane detailsTabs = new JTabbedPane();
+
+            // Sütés előtti részletek panel
+            JPanel rawDetailsPanel = new JPanel();
+            rawDetailsPanel.setLayout(new BoxLayout(rawDetailsPanel, BoxLayout.Y_AXIS));
+            JScrollPane rawScrollPane = new JScrollPane(rawDetailsPanel);
+
+            // Sütés utáni részletek panel
+            JPanel bakedDetailsPanel = new JPanel();
+            bakedDetailsPanel.setLayout(new BoxLayout(bakedDetailsPanel, BoxLayout.Y_AXIS));
+            JScrollPane bakedScrollPane = new JScrollPane(bakedDetailsPanel);
+
+            // Részletes tápérték adatok hozzáadása
+            addDetailedNutrition(rawDetailsPanel, rawResult);
+            addDetailedNutrition(bakedDetailsPanel, bakedResult);
+
+            detailsTabs.addTab("Sütés előtt", rawScrollPane);
+            detailsTabs.addTab("Sütés után", bakedScrollPane);
+
+            detailsDialog.add(detailsTabs, BorderLayout.CENTER);
+
+            // Bezárás gomb
+            JButton closeBtn = new JButton("Bezárás");
+            JPanel buttonPanel = new JPanel();
+            buttonPanel.add(closeBtn);
+            detailsDialog.add(buttonPanel, BorderLayout.SOUTH);
+
+            closeBtn.addActionListener(event -> detailsDialog.dispose());
+
+            // Megjelenítés
+            detailsDialog.setLocationRelativeTo(this);
+            detailsDialog.setVisible(true);
+        });
+
+        // Panel frissítése
+        resultPanel.revalidate();
+        resultPanel.repaint();
+    }
+
+    /**
+     * Részletes tápérték adatok hozzáadása egy panelhez
+     */
+    private void addDetailedNutrition(JPanel panel, NutritionInfo info) {
+        // Főbb tápértékek
+        JLabel titleLabel = new JLabel("Tápérték 100g termékre");
+        titleLabel.setFont(new Font("Arial", Font.BOLD, 14));
+        titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        panel.add(titleLabel);
+        panel.add(Box.createVerticalStrut(15));
+
+        // Az összes tápanyag hozzáadása
+        for (String nutrient : NutritionInfo.getAllNutrients()) {
+            double value = info.getValue(nutrient);
+            // Csak azokat az értékeket jelenítjük meg, amelyek nem nullák
+            if (value > 0.001) {
+                addResultRow(panel, getNutrientDisplayName(nutrient), value);
+            }
+        }
+    }
+
+    /**
+     * Tápanyag megjelenítési nevének megszerzése
+     */
+    private String getNutrientDisplayName(String nutrient) {
+        Map<String, String> displayNames = new HashMap<>();
+        displayNames.put("energy", "Energia (kJ)");
+        displayNames.put("energyKcal", "Energia (kcal)");
+        displayNames.put("fat", "Zsír (g)");
+        displayNames.put("saturatedFat", "- ebből telített zsírsav (g)");
+        displayNames.put("monounsaturatedFat", "- ebből egyszeresen telítetlen (g)");
+        displayNames.put("polyunsaturatedFat", "- ebből többszörösen telítetlen (g)");
+        displayNames.put("transFat", "- ebből transz-zsír (g)");
+        displayNames.put("cholesterol", "Koleszterin (mg)");
+        displayNames.put("carbs", "Szénhidrát (g)");
+        displayNames.put("sugar", "- ebből cukor (g)");
+        displayNames.put("starch", "- ebből keményítő (g)");
+        displayNames.put("fiber", "Rost (g)");
+        displayNames.put("protein", "Fehérje (g)");
+        displayNames.put("salt", "Só (g)");
+        displayNames.put("sodium", "Nátrium (mg)");
+        displayNames.put("vitaminA", "A-vitamin (µg)");
+        displayNames.put("vitaminC", "C-vitamin (mg)");
+        displayNames.put("vitaminD", "D-vitamin (µg)");
+        displayNames.put("vitaminE", "E-vitamin (mg)");
+        displayNames.put("vitaminK", "K-vitamin (µg)");
+        displayNames.put("vitaminB1", "B1-vitamin (mg)");
+        displayNames.put("vitaminB2", "B2-vitamin (mg)");
+        displayNames.put("vitaminB3", "B3-vitamin (mg)");
+        displayNames.put("vitaminB6", "B6-vitamin (mg)");
+        displayNames.put("vitaminB12", "B12-vitamin (µg)");
+        displayNames.put("folate", "Folát (µg)");
+        displayNames.put("calcium", "Kalcium (mg)");
+        displayNames.put("iron", "Vas (mg)");
+        displayNames.put("magnesium", "Magnézium (mg)");
+        displayNames.put("phosphorus", "Foszfor (mg)");
+        displayNames.put("potassium", "Kálium (mg)");
+        displayNames.put("zinc", "Cink (mg)");
+
+        return displayNames.getOrDefault(nutrient, nutrient);
+    }
+
+    /**
+     * Összehasonlító sor hozzáadása két panelhez
+     */
+    private void addComparisonRow(JPanel leftPanel, JPanel rightPanel, String label,
+                                  double leftValue, double rightValue) {
+        DecimalFormat df = new DecimalFormat("#.##");
+
+        JPanel leftRow = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        JLabel leftLabel = new JLabel(label + ":");
+        leftLabel.setPreferredSize(new Dimension(120, 20));
+        JLabel leftValueLabel = new JLabel(df.format(leftValue));
+        leftRow.add(leftLabel);
+        leftRow.add(leftValueLabel);
+        leftPanel.add(leftRow);
+
+        JPanel rightRow = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        JLabel rightLabel = new JLabel(label + ":");
+        rightLabel.setPreferredSize(new Dimension(120, 20));
+        JLabel rightValueLabel = new JLabel(df.format(rightValue));
+        rightRow.add(rightLabel);
+        rightRow.add(rightValueLabel);
+        rightPanel.add(rightRow);
+    }
+
+
     private void displayResults(NutritionInfo result) {
         // Töröljük a korábbi eredményeket
         resultPanel.removeAll();
@@ -326,27 +609,27 @@ public class NutritionCalculator extends JFrame {
         resultPanel.add(Box.createVerticalStrut(15));
 
         // Energia
-        addResultRow("Energia (kJ)", result.getValue("energy"));
-        addResultRow("Energia (kcal)", result.getValue("energyKcal"));
+        addResultRow(resultPanel, "Energia (kJ)", result.getValue("energy"));
+        addResultRow(resultPanel, "Energia (kcal)", result.getValue("energyKcal"));
         resultPanel.add(Box.createVerticalStrut(10));
 
         // Makrotápanyagok
-        addResultRow("Zsír (g)", result.getValue("fat"));
-        addResultRow("- ebből telített zsírsav (g)", result.getValue("saturatedFat"));
-        addResultRow("- ebből egyszeresen telítetlen (g)", result.getValue("monounsaturatedFat"));
-        addResultRow("- ebből többszörösen telítetlen (g)", result.getValue("polyunsaturatedFat"));
-        addResultRow("- ebből transz-zsír (g)", result.getValue("transFat"));
-        addResultRow("Koleszterin (mg)", result.getValue("cholesterol"));
+        addResultRow(resultPanel, "Zsír (g)", result.getValue("fat"));
+        addResultRow(resultPanel, "- ebből telített zsírsav (g)", result.getValue("saturatedFat"));
+        addResultRow(resultPanel, "- ebből egyszeresen telítetlen (g)", result.getValue("monounsaturatedFat"));
+        addResultRow(resultPanel, "- ebből többszörösen telítetlen (g)", result.getValue("polyunsaturatedFat"));
+        addResultRow(resultPanel, "- ebből transz-zsír (g)", result.getValue("transFat"));
+        addResultRow(resultPanel, "Koleszterin (mg)", result.getValue("cholesterol"));
         resultPanel.add(Box.createVerticalStrut(10));
 
-        addResultRow("Szénhidrát (g)", result.getValue("carbs"));
-        addResultRow("- ebből cukor (g)", result.getValue("sugar"));
-        addResultRow("- ebből keményítő (g)", result.getValue("starch"));
-        addResultRow("Rost (g)", result.getValue("fiber"));
+        addResultRow(resultPanel, "Szénhidrát (g)", result.getValue("carbs"));
+        addResultRow(resultPanel, "- ebből cukor (g)", result.getValue("sugar"));
+        addResultRow(resultPanel, "- ebből keményítő (g)", result.getValue("starch"));
+        addResultRow(resultPanel, "Rost (g)", result.getValue("fiber"));
         resultPanel.add(Box.createVerticalStrut(10));
 
-        addResultRow("Fehérje (g)", result.getValue("protein"));
-        addResultRow("Só (g)", result.getValue("salt"));
+        addResultRow(resultPanel, "Fehérje (g)", result.getValue("protein"));
+        addResultRow(resultPanel, "Só (g)", result.getValue("salt"));
         resultPanel.add(Box.createVerticalStrut(15));
 
         // Vitaminok és ásványi anyagok
@@ -356,33 +639,36 @@ public class NutritionCalculator extends JFrame {
         resultPanel.add(vitaminsLabel);
         resultPanel.add(Box.createVerticalStrut(10));
 
-        addResultRow("A-vitamin (µg)", result.getValue("vitaminA"));
-        addResultRow("C-vitamin (mg)", result.getValue("vitaminC"));
-        addResultRow("D-vitamin (µg)", result.getValue("vitaminD"));
-        addResultRow("E-vitamin (mg)", result.getValue("vitaminE"));
-        addResultRow("K-vitamin (µg)", result.getValue("vitaminK"));
-        addResultRow("B1-vitamin (mg)", result.getValue("vitaminB1"));
-        addResultRow("B2-vitamin (mg)", result.getValue("vitaminB2"));
-        addResultRow("B3-vitamin (mg)", result.getValue("vitaminB3"));
-        addResultRow("B6-vitamin (mg)", result.getValue("vitaminB6"));
-        addResultRow("B12-vitamin (µg)", result.getValue("vitaminB12"));
-        addResultRow("Folát (µg)", result.getValue("folate"));
+        addResultRow(resultPanel, "A-vitamin (µg)", result.getValue("vitaminA"));
+        addResultRow(resultPanel, "C-vitamin (mg)", result.getValue("vitaminC"));
+        addResultRow(resultPanel, "D-vitamin (µg)", result.getValue("vitaminD"));
+        addResultRow(resultPanel, "E-vitamin (mg)", result.getValue("vitaminE"));
+        addResultRow(resultPanel, "K-vitamin (µg)", result.getValue("vitaminK"));
+        addResultRow(resultPanel, "B1-vitamin (mg)", result.getValue("vitaminB1"));
+        addResultRow(resultPanel, "B2-vitamin (mg)", result.getValue("vitaminB2"));
+        addResultRow(resultPanel, "B3-vitamin (mg)", result.getValue("vitaminB3"));
+        addResultRow(resultPanel, "B6-vitamin (mg)", result.getValue("vitaminB6"));
+        addResultRow(resultPanel, "B12-vitamin (µg)", result.getValue("vitaminB12"));
+        addResultRow(resultPanel, "Folát (µg)", result.getValue("folate"));
         resultPanel.add(Box.createVerticalStrut(10));
 
-        addResultRow("Kalcium (mg)", result.getValue("calcium"));
-        addResultRow("Vas (mg)", result.getValue("iron"));
-        addResultRow("Magnézium (mg)", result.getValue("magnesium"));
-        addResultRow("Foszfor (mg)", result.getValue("phosphorus"));
-        addResultRow("Kálium (mg)", result.getValue("potassium"));
-        addResultRow("Nátrium (mg)", result.getValue("sodium"));
-        addResultRow("Cink (mg)", result.getValue("zinc"));
+        addResultRow(resultPanel, "Kalcium (mg)", result.getValue("calcium"));
+        addResultRow(resultPanel, "Vas (mg)", result.getValue("iron"));
+        addResultRow(resultPanel, "Magnézium (mg)", result.getValue("magnesium"));
+        addResultRow(resultPanel, "Foszfor (mg)", result.getValue("phosphorus"));
+        addResultRow(resultPanel, "Kálium (mg)", result.getValue("potassium"));
+        addResultRow(resultPanel, "Nátrium (mg)", result.getValue("sodium"));
+        addResultRow(resultPanel, "Cink (mg)", result.getValue("zinc"));
 
         // Panel frissítése
         resultPanel.revalidate();
         resultPanel.repaint();
     }
 
-    private void addResultRow(String label, double value) {
+    /**
+     * Eredmény sor hozzáadása panelhez
+     */
+    private void addResultRow(JPanel panel, String label, double value) {
         JPanel rowPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         rowPanel.setMaximumSize(new Dimension(250, 25));
 
@@ -394,7 +680,7 @@ public class NutritionCalculator extends JFrame {
         rowPanel.add(nameLabel);
         rowPanel.add(valueLabel);
 
-        resultPanel.add(rowPanel);
+        panel.add(rowPanel);
     }
 
     private void saveRecipe() {
